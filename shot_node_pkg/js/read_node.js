@@ -34,6 +34,67 @@ function path_stem(path) {
     return [path.slice(0, index + 1), path.slice(index + 1)];
 }
 
+// EXR output definitions
+const EXR_OUTPUTS = [
+    { name: "layers", type: "DICT" },
+    { name: "cryptomatte", type: "DICT" },
+    { name: "metadata", type: "STRING" },
+];
+
+// Track whether EXR outputs are currently shown
+const nodeExrState = new WeakMap();
+
+// Detect file type and update output visibility
+async function updateOutputVisibility(node, directory) {
+    if (!directory) {
+        setExrOutputsVisible(node, false);
+        return;
+    }
+
+    try {
+        let detectURL = api.apiURL("/read_node/detect_type?" + new URLSearchParams({ path: directory }));
+        let resp = await fetch(detectURL);
+        let data = await resp.json();
+
+        const isExr = data.type === "exr" || data.type === "mixed";
+        setExrOutputsVisible(node, isExr);
+    } catch (e) {
+        console.error("Failed to detect file type:", e);
+        setExrOutputsVisible(node, true);
+    }
+}
+
+function setExrOutputsVisible(node, visible) {
+    if (!node.outputs) return;
+
+    const currentState = nodeExrState.get(node) || false;
+    if (currentState === visible) return;
+
+    nodeExrState.set(node, visible);
+
+    if (visible) {
+        // Add EXR outputs if not present
+        if (node.outputs.length === 3) {
+            for (let output of EXR_OUTPUTS) {
+                node.addOutput(output.name, output.type);
+            }
+        }
+    } else {
+        // Remove EXR outputs (indices 5, 4, 3 - reverse order to preserve indices)
+        while (node.outputs.length > 3) {
+            const idx = node.outputs.length - 1;
+            // Disconnect any links first
+            if (node.outputs[idx].links && node.outputs[idx].links.length > 0) {
+                node.disconnectOutput(idx);
+            }
+            node.removeOutput(idx);
+        }
+    }
+
+    node.setSize(node.computeSize());
+    node.graph?.setDirtyCanvas(true);
+}
+
 // Autocomplete search box (same style as VHS)
 function searchBox(event, [x, y], node) {
     if (this.prompt) return;
@@ -342,6 +403,9 @@ function addLoadWidgetCallback(nodeType, widgetName) {
             }
             let params = { filename: value, type: "path", format: "folder" };
             node.updateParameters(params, true);
+
+            // Update output visibility based on file type
+            updateOutputVisibility(node, value);
         });
     });
 }
@@ -392,6 +456,37 @@ function replacePathWidget(nodeType) {
     });
 }
 
+// Initialize output visibility on node creation
+function initializeOutputVisibility(nodeType) {
+    chainCallback(nodeType.prototype, "onNodeCreated", function () {
+        const node = this;
+
+        // Remove EXR outputs by default (will be added when EXR directory is selected)
+        setTimeout(() => {
+            // Mark as showing EXR so setExrOutputsVisible will remove them
+            nodeExrState.set(node, true);
+            setExrOutputsVisible(node, false);
+        }, 50);
+    });
+
+    // Also check visibility when node is configured (e.g., loading from workflow)
+    chainCallback(nodeType.prototype, "onConfigure", function (info) {
+        const node = this;
+        const pathWidget = this.widgets?.find((w) => w.name === "directory");
+
+        // Delay to ensure node is fully configured
+        setTimeout(() => {
+            if (pathWidget?.value) {
+                updateOutputVisibility(node, pathWidget.value);
+            } else {
+                // Mark as showing EXR so setExrOutputsVisible will remove them
+                nodeExrState.set(node, true);
+                setExrOutputsVisible(node, false);
+            }
+        }, 100);
+    });
+}
+
 app.registerExtension({
     name: "read_node.preview",
 
@@ -402,5 +497,6 @@ app.registerExtension({
         addVideoPreview(nodeType);
         addLoadWidgetCallback(nodeType, "directory");
         addWidgetCallbacks(nodeType);
+        initializeOutputVisibility(nodeType);
     },
 });
