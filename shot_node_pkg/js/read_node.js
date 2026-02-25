@@ -24,7 +24,7 @@ function fitHeight(node) {
 
 // Path helper - split path into directory and remainder
 function path_stem(path) {
-    let index = path.lastIndexOf("/");
+    let index = path.lastIndexOf(os.sep);
     if (index < 0) {
         index = path.lastIndexOf("\\");
     }

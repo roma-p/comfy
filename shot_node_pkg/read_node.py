@@ -9,7 +9,6 @@ from comfy.utils import ProgressBar
 from aiohttp import web
 from server import PromptServer
 
-# Import from local modules
 from .utils.file_utils import (
     strip_path, has_extension, calculate_file_hash, IMG_EXTENSIONS,
 )
@@ -39,7 +38,7 @@ async def get_path(request):
 
     path = query["path"].strip().strip('"')
     if not path:
-        path = "/"
+        path = os.sep
 
     path = os.path.abspath(path)
 
@@ -54,7 +53,7 @@ async def get_path(request):
         for item in os.scandir(path):
             try:
                 if item.is_dir():
-                    valid_items.append(item.name + "/")
+                    valid_items.append(item.name + os.sep)
                 elif has_extension(item.name, extensions):
                     valid_items.append(item.name)
             except OSError:

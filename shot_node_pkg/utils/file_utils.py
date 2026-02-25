@@ -35,15 +35,6 @@ def strip_path(path: Optional[str]) -> Optional[str]:
 
 
 def _get_extension(path: str) -> str:
-    """
-    Get lowercase file extension without the dot.
-
-    Args:
-        path: File path or filename
-
-    Returns:
-        Extension without dot, lowercase (e.g., "png", "exr")
-    """
     return os.path.splitext(path)[1].lower().lstrip('.')
 
 
@@ -111,7 +102,6 @@ def validate_size_string(size_str: str) -> bool:
 
 
 def calculate_file_hash(filename: str) -> str:
-    """Calculate hash based on filename and modification time."""
     h = hashlib.sha256()
     h.update(filename.encode())
     h.update(str(os.path.getmtime(filename)).encode())

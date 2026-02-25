@@ -18,7 +18,6 @@ from aiohttp import web
 
 from .file_utils import escape_ffmpeg_path, validate_size_string
 
-# Find ffmpeg (using imageio_ffmpeg like VHS does)
 ffmpeg_path = None
 try:
     from imageio_ffmpeg import get_ffmpeg_exe
