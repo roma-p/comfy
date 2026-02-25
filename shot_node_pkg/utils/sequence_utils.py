@@ -62,7 +62,7 @@ HOUDINI_PATTERN = re.compile(r'\$F(\d*)')       # $F4, $F3, $F (default 4)
 HASH_PATTERN = re.compile(r'(#+)')              # ####, ###, ##
 
 
-def detect_pattern_type(path: str) -> PatternType:
+def _detect_pattern_type(path: str) -> PatternType:
     """Detect which pattern type is used in the path."""
     if PRINTF_PATTERN.search(path):
         return PatternType.PRINTF
@@ -73,7 +73,7 @@ def detect_pattern_type(path: str) -> PatternType:
     return PatternType.NONE
 
 
-def parse_pattern(path: str) -> Optional[SequencePattern]:
+def _parse_pattern(path: str) -> Optional[SequencePattern]:
     """
     Parse a sequence pattern path into components.
 
@@ -93,7 +93,7 @@ def parse_pattern(path: str) -> Optional[SequencePattern]:
     if not filename:
         return None
 
-    pattern_type = detect_pattern_type(filename)
+    pattern_type = _detect_pattern_type(filename)
 
     if pattern_type == PatternType.PRINTF:
         match = PRINTF_PATTERN.search(filename)
@@ -137,10 +137,10 @@ def parse_pattern(path: str) -> Optional[SequencePattern]:
 
 
 def has_sequence_pattern(path: str) -> bool:
-    return detect_pattern_type(path) != PatternType.NONE
+    return _detect_pattern_type(path) != PatternType.NONE
 
 
-def find_sequence_files(pattern_path: str) -> List[str]:
+def _find_sequence_files(pattern_path: str) -> List[str]:
     """
     Find all files matching the sequence pattern.
 
@@ -150,7 +150,7 @@ def find_sequence_files(pattern_path: str) -> List[str]:
     Returns:
         Sorted list of matching file paths
     """
-    pattern = parse_pattern(pattern_path)
+    pattern = _parse_pattern(pattern_path)
     if not pattern:
         return []
 
@@ -288,7 +288,7 @@ def resolve_sequence_files(
     """
     from .file_utils import (
         IMG_EXTENSIONS, EXR_EXTENSIONS, ALL_EXTENSIONS,
-        get_sorted_dir_files_from_directory, detect_file_type, strip_path, FileType
+        _get_sorted_dir_files_from_directory, _detect_file_type, strip_path, FileType
     )
 
     path = strip_path(path)
@@ -299,7 +299,7 @@ def resolve_sequence_files(
     file_type = "unknown"
 
     if has_sequence_pattern(path):
-        files = find_sequence_files(path)
+        files = _find_sequence_files(path)
 
         if extensions is not None:
             files = [f for f in files if has_extension(f, extensions)]
@@ -313,7 +313,7 @@ def resolve_sequence_files(
         if not os.path.isdir(path):
             return [], "unknown"
 
-        detected = detect_file_type(path)
+        detected = _detect_file_type(path)
         file_type = detected.value
 
         if extensions is not None:
@@ -325,7 +325,7 @@ def resolve_sequence_files(
         else:
             use_extensions = ALL_EXTENSIONS
 
-        files = get_sorted_dir_files_from_directory(path, extensions=use_extensions)
+        files = _get_sorted_dir_files_from_directory(path, extensions=use_extensions)
 
     if skip_first > 0:
         files = files[skip_first:]
@@ -349,14 +349,14 @@ def detect_file_type_from_path(path: str) -> str:
     Returns:
         File type string: "standard", "exr", "unknown"
     """
-    from .file_utils import IMG_EXTENSIONS, EXR_EXTENSIONS, detect_file_type, strip_path
+    from .file_utils import IMG_EXTENSIONS, EXR_EXTENSIONS, _detect_file_type, strip_path
 
     path = strip_path(path)
     if not path:
         return "unknown"
 
     if has_sequence_pattern(path):
-        files = find_sequence_files(path)
+        files = _find_sequence_files(path)
         if files:
             if has_extension(files[0], EXR_EXTENSIONS):
                 return "exr"
@@ -364,4 +364,4 @@ def detect_file_type_from_path(path: str) -> str:
                 return "standard"
         return "unknown"
     else:
-        return detect_file_type(path).value
+        return _detect_file_type(path).value

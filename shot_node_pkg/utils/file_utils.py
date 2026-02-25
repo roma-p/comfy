@@ -34,7 +34,7 @@ def strip_path(path: Optional[str]) -> Optional[str]:
     return path
 
 
-def get_extension(path: str) -> str:
+def _get_extension(path: str) -> str:
     """
     Get lowercase file extension without the dot.
 
@@ -61,7 +61,7 @@ def has_extension(path: str, extensions: Optional[Set[str]]) -> bool:
     """
     if extensions is None:
         return True
-    ext = get_extension(path)
+    ext = _get_extension(path)
     # Normalize extensions set (remove dots, lowercase)
     normalized = {e.lower().lstrip('.') for e in extensions}
     return ext in normalized
@@ -118,7 +118,7 @@ def calculate_file_hash(filename: str) -> str:
     return h.hexdigest()
 
 
-def get_sorted_dir_files_from_directory(
+def _get_sorted_dir_files_from_directory(
     directory: str,
     skip_first_images: int = 0,
     select_every_nth: int = 1,
@@ -158,7 +158,7 @@ def get_sorted_dir_files_from_directory(
     return filtered_files
 
 
-def detect_file_type(directory: str) -> FileType:
+def _detect_file_type(directory: str) -> FileType:
     """
     Detect the predominant file type in a directory.
 

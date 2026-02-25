@@ -3,10 +3,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any
 import torch
 
-from ..utils.file_utils import has_extension
-from .utils.file_utils import (
-    EXR_EXTENSIONS
-)
+from ..utils.file_utils import has_extension, EXR_EXTENSIONS
 
 # EXR loader is optional (requires OpenImageIO)
 try:
@@ -16,11 +13,12 @@ except ImportError:
     ExrLoader = None
     EXR_AVAILABLE = False
 
-from .image_loader import ImageLoader
-
 
 def resolve_loader(file_path: str):
     """Get appropriate loader for file type."""
+    # Import here to avoid circular import
+    from .image_loader import ImageLoader
+
     if has_extension(file_path, EXR_EXTENSIONS):
         if not EXR_AVAILABLE:
             raise ImportError(

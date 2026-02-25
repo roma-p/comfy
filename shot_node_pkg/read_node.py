@@ -402,7 +402,7 @@ class ReadNode:
             sequence_path: str,
             image_load_cap: int = 0,
             skip_first_images: int = 0,
-            select_every_nth: int = 1
+            select_every_nth: int = 1,
             normalize: bool = False,
             **kwargs
     ):
