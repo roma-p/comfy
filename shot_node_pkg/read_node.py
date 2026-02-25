@@ -5,7 +5,6 @@ from io import BytesIO
 import torch
 from PIL import Image, ImageOps
 
-import folder_paths
 from comfy.utils import ProgressBar
 from aiohttp import web
 from server import PromptServer
@@ -16,29 +15,16 @@ from .utils.file_utils import (
     IMG_EXTENSIONS, EXR_EXTENSIONS, ALL_EXTENSIONS
 )
 from .utils.sequence_utils import (
-    has_sequence_pattern, find_sequence_files, detect_sequences,
+    has_sequence_pattern, detect_sequences,
     resolve_sequence_files, detect_file_type_from_path
 )
 from .utils.preview_utils import generate_preview_animated, generate_preview_static
-from .loaders import ImageLoader, EXR_AVAILABLE
+from .loaders import EXR_AVAILABLE
 if EXR_AVAILABLE:
     from .loaders import ExrLoader
 
 
 BIGMAX = (2**53 - 1)
-
-
-def get_loader(file_path: str):
-    """Get appropriate loader for file type."""
-    if has_extension(file_path, EXR_EXTENSIONS):
-        if not EXR_AVAILABLE:
-            raise ImportError(
-                "OpenImageIO is required for EXR files but not available. "
-                "Install with: pip install OpenImageIO"
-            )
-        return ExrLoader()
-    else:
-        return ImageLoader()
 
 
 # =============================================================================
@@ -253,7 +239,7 @@ def load_images_with_layers(sequence_path: str, image_load_cap: int = 0, skip_fi
 
     # Determine loader from first file
     first_file = dir_files[0]
-    loader = get_loader(first_file)
+    loader = resolve_loader(first_file)
     is_exr = isinstance(loader, ExrLoader) if EXR_AVAILABLE else False
 
     # Load first image to get dimensions

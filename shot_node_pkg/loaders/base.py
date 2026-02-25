@@ -1,9 +1,37 @@
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Any
 import torch
 
 from ..utils.file_utils import has_extension
+from .utils.file_utils import (
+    EXR_EXTENSIONS
+)
+
+# EXR loader is optional (requires OpenImageIO)
+try:
+    from .exr_loader import ExrLoader
+    EXR_AVAILABLE = True
+except ImportError:
+    ExrLoader = None
+    EXR_AVAILABLE = False
+
+
+def resolve_loader(file_path: str):
+    """Get appropriate loader for file type."""
+    ext = os.path.splitext(file_path)[1].lower()
+
+    if ext in EXR_EXTENSIONS:
+        if not EXR_AVAILABLE:
+            raise ImportError(
+                "OpenImageIO is required for EXR files but not available. "
+                "Install with: pip install OpenImageIO"
+            )
+        return ExrLoader()
+    else:
+        return ImageLoader()
+
 
 
 @dataclass
