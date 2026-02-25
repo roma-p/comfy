@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Optional, Tuple, List, Set
 from dataclasses import dataclass, field
 
-from .file_utils import get_extension, has_extension
+from .file_utils import has_extension
 
 
 class PatternType(Enum):
@@ -137,7 +137,6 @@ def parse_pattern(path: str) -> Optional[SequencePattern]:
 
 
 def has_sequence_pattern(path: str) -> bool:
-    """Check if path contains a sequence pattern."""
     return detect_pattern_type(path) != PatternType.NONE
 
 

@@ -11,15 +11,14 @@ from server import PromptServer
 
 # Import from local modules
 from .utils.file_utils import (
-    strip_path, get_extension, has_extension, calculate_file_hash,
-    IMG_EXTENSIONS, EXR_EXTENSIONS, ALL_EXTENSIONS
+    strip_path, has_extension, calculate_file_hash, IMG_EXTENSIONS,
 )
 from .utils.sequence_utils import (
     has_sequence_pattern, detect_sequences,
     resolve_sequence_files, detect_file_type_from_path
 )
 from .utils.preview_utils import generate_preview_animated, generate_preview_static
-from .loaders import EXR_AVAILABLE
+from .loaders import EXR_AVAILABLE, resolve_loader
 if EXR_AVAILABLE:
     from .loaders import ExrLoader
 
@@ -47,7 +46,6 @@ async def get_path(request):
     if not os.path.exists(path):
         return web.json_response([])
 
-    # Parse extensions filter from query (comma-separated or None for all)
     ext_param = query.get("extensions")
     extensions = set(ext_param.split(',')) if ext_param else None
 
@@ -121,7 +119,11 @@ async def resolve_preview_exr(request):
         return web.Response(status=404, text="No sequence path provided")
 
     # Get first file only (limit=1)
-    files, _ = resolve_sequence_files(sequence_path, extensions=IMG_EXTENSIONS, limit=1)
+    files, _ = resolve_sequence_files(
+        sequence_path,
+        extensions=IMG_EXTENSIONS,
+        limit=1
+    )
 
     if not files:
         return web.Response(status=404, text="No images found")
@@ -169,15 +171,25 @@ async def resolve_animated_preview(request):
     )
 
     force_size = query.get("force_size", "") or None
-    return await generate_preview_animated(valid_images, request, force_size=force_size)
+    return await generate_preview_animated(
+        valid_images,
+        request,
+        force_size=force_size
+    )
 
 
 # =============================================================================
 # Image Loading Functions
 # =============================================================================
 
-def is_changed_load_images(sequence_path: str, image_load_cap: int = 0, skip_first_images: int = 0,
-                           select_every_nth: int = 1, normalize: bool = False, **kwargs):
+def is_changed_load_images(
+        sequence_path: str,
+        image_load_cap: int = 0,
+        skip_first_images: int = 0,
+        select_every_nth: int = 1,
+        normalize: bool = False,
+        **kwargs
+):
     """Check if inputs have changed for ComfyUI caching."""
     if not sequence_path:
         return False
@@ -215,8 +227,13 @@ def validate_load_images(sequence_path: str):
     return True
 
 
-def load_images_with_layers(sequence_path: str, image_load_cap: int = 0, skip_first_images: int = 0,
-                            select_every_nth: int = 1, normalize: bool = False):
+def load_images_with_layers(
+        sequence_path: str,
+        image_load_cap: int = 0,
+        skip_first_images: int = 0,
+        select_every_nth: int = 1,
+        normalize: bool = False
+):
     """
     Load images from sequence pattern or directory with full layer support.
 
@@ -313,14 +330,13 @@ def load_images_with_layers(sequence_path: str, image_load_cap: int = 0, skip_fi
         if tensor_list:
             cryptomatte_dict[crypto_name] = torch.cat(tensor_list, dim=0)
 
-    # Build metadata (Option B: flat with type discriminator)
     if is_exr:
-        # EXR format: CoCoTools-compatible
         metadata = {
             "type": "exr",
             "width": target_width,
             "height": target_height,
             "frame_count": len(dir_files),
+
             # EXR-specific fields from loader
             "subimages": first_result.metadata.get("subimages", []),
             "is_multipart": first_result.metadata.get("is_multipart", False),
@@ -329,12 +345,12 @@ def load_images_with_layers(sequence_path: str, image_load_cap: int = 0, skip_fi
             "cryptomatte_names": list(cryptomatte_dict.keys()),
         }
     else:
-        # Standard format: PNG/JPG/etc
         metadata = {
             "type": "standard",
             "width": target_width,
             "height": target_height,
             "frame_count": len(dir_files),
+
             # Standard-specific fields from loader
             "format": first_result.metadata.get("format", "unknown"),
             "mode": first_result.metadata.get("mode", "RGB"),
@@ -381,10 +397,17 @@ class ReadNode:
     FUNCTION = "load_images"
     CATEGORY = "project"
 
-    def load_images(self, sequence_path: str, image_load_cap: int = 0, skip_first_images: int = 0,
-                    select_every_nth: int = 1, normalize: bool = False, **kwargs):
+    def load_images(
+            self,
+            sequence_path: str,
+            image_load_cap: int = 0,
+            skip_first_images: int = 0,
+            select_every_nth: int = 1
+            normalize: bool = False,
+            **kwargs
+    ):
         validation = validate_load_images(sequence_path)
-        if validation != True:
+        if not validation:
             raise Exception(validation)
 
         result = load_images_with_layers(
@@ -395,7 +418,8 @@ class ReadNode:
             normalize=normalize,
         )
 
-        # Generate execution preview only for EXR (standard images have animated preview)
+        # Generate execution preview only for EXR
+        # (standard images have animated preview)
         metadata = json.loads(result[3])
 
         if metadata.get("type") == "exr":

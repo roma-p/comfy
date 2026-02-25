@@ -1,4 +1,3 @@
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Any
@@ -17,12 +16,12 @@ except ImportError:
     ExrLoader = None
     EXR_AVAILABLE = False
 
+from .image_loader import ImageLoader
+
 
 def resolve_loader(file_path: str):
     """Get appropriate loader for file type."""
-    ext = os.path.splitext(file_path)[1].lower()
-
-    if ext in EXR_EXTENSIONS:
+    if has_extension(file_path, EXR_EXTENSIONS):
         if not EXR_AVAILABLE:
             raise ImportError(
                 "OpenImageIO is required for EXR files but not available. "
