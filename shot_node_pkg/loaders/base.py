@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from typing import Dict, Any
 import torch
 
+from ..utils.file_utils import has_extension
+
 
 @dataclass
 class LoadResult:
@@ -49,9 +51,7 @@ class BaseLoader(ABC):
 
     @classmethod
     def can_load(cls, file_path: str) -> bool:
-        import os
-        ext = os.path.splitext(file_path)[1].lower()
-        return ext in cls.EXTENSIONS
+        return has_extension(file_path, cls.EXTENSIONS)
 
     @staticmethod
     def resize_to_match(image: torch.Tensor, target_width: int, target_height: int) -> torch.Tensor:

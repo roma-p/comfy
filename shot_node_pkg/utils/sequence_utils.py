@@ -9,6 +9,8 @@ from enum import Enum
 from typing import Optional, Tuple, List, Set
 from dataclasses import dataclass, field
 
+from .file_utils import get_extension, has_extension
+
 
 class PatternType(Enum):
     PRINTF = "printf"    # %04d, %03d, etc.
@@ -212,8 +214,7 @@ def detect_sequences(
                 continue
 
             # Check extension
-            ext = os.path.splitext(item.name)[1].lower()
-            if ext not in extensions:
+            if not has_extension(item.name, extensions):
                 continue
 
             match = number_pattern.match(item.name)
@@ -302,13 +303,12 @@ def resolve_sequence_files(
         files = find_sequence_files(path)
 
         if extensions is not None:
-            files = [f for f in files if os.path.splitext(f)[1].lower() in extensions]
+            files = [f for f in files if has_extension(f, extensions)]
 
         if files:
-            ext = os.path.splitext(files[0])[1].lower()
-            if ext in EXR_EXTENSIONS:
+            if has_extension(files[0], EXR_EXTENSIONS):
                 file_type = "exr"
-            elif ext in IMG_EXTENSIONS:
+            elif has_extension(files[0], IMG_EXTENSIONS):
                 file_type = "standard"
     else:
         if not os.path.isdir(path):
@@ -359,10 +359,9 @@ def detect_file_type_from_path(path: str) -> str:
     if has_sequence_pattern(path):
         files = find_sequence_files(path)
         if files:
-            ext = os.path.splitext(files[0])[1].lower()
-            if ext in EXR_EXTENSIONS:
+            if has_extension(files[0], EXR_EXTENSIONS):
                 return "exr"
-            elif ext in IMG_EXTENSIONS:
+            elif has_extension(files[0], IMG_EXTENSIONS):
                 return "standard"
         return "unknown"
     else:

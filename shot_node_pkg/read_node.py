@@ -12,7 +12,7 @@ from server import PromptServer
 
 # Import from local modules
 from .utils.file_utils import (
-    strip_path, calculate_file_hash,
+    strip_path, get_extension, has_extension, calculate_file_hash,
     IMG_EXTENSIONS, EXR_EXTENSIONS, ALL_EXTENSIONS
 )
 from .utils.sequence_utils import (
@@ -30,9 +30,7 @@ BIGMAX = (2**53 - 1)
 
 def get_loader(file_path: str):
     """Get appropriate loader for file type."""
-    ext = os.path.splitext(file_path)[1].lower()
-
-    if ext in EXR_EXTENSIONS:
+    if has_extension(file_path, EXR_EXTENSIONS):
         if not EXR_AVAILABLE:
             raise ImportError(
                 "OpenImageIO is required for EXR files but not available. "
@@ -63,17 +61,17 @@ async def get_path(request):
     if not os.path.exists(path):
         return web.json_response([])
 
-    valid_extensions = query.get("extensions")
-    valid_items = []
+    # Parse extensions filter from query (comma-separated or None for all)
+    ext_param = query.get("extensions")
+    extensions = set(ext_param.split(',')) if ext_param else None
 
+    valid_items = []
     try:
         for item in os.scandir(path):
             try:
                 if item.is_dir():
                     valid_items.append(item.name + "/")
-                    continue
-                ext = os.path.splitext(item.name)[1].lower()
-                if valid_extensions is None or ext.lstrip('.') in valid_extensions:
+                elif has_extension(item.name, extensions):
                     valid_items.append(item.name)
             except OSError:
                 pass

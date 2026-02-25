@@ -34,6 +34,39 @@ def strip_path(path: Optional[str]) -> Optional[str]:
     return path
 
 
+def get_extension(path: str) -> str:
+    """
+    Get lowercase file extension without the dot.
+
+    Args:
+        path: File path or filename
+
+    Returns:
+        Extension without dot, lowercase (e.g., "png", "exr")
+    """
+    return os.path.splitext(path)[1].lower().lstrip('.')
+
+
+def has_extension(path: str, extensions: Optional[Set[str]]) -> bool:
+    """
+    Check if file has one of the given extensions.
+
+    Args:
+        path: File path or filename
+        extensions: Set of valid extensions (with or without dot, any case)
+                   If None, returns True (all extensions valid)
+
+    Returns:
+        True if extension matches or extensions is None
+    """
+    if extensions is None:
+        return True
+    ext = get_extension(path)
+    # Normalize extensions set (remove dots, lowercase)
+    normalized = {e.lower().lstrip('.') for e in extensions}
+    return ext in normalized
+
+
 def escape_ffmpeg_path(path: str) -> str:
     """
     Escape a file path for use in ffmpeg concat file.
@@ -116,11 +149,7 @@ def get_sorted_dir_files_from_directory(
     dir_files = [f for f in dir_files if os.path.isfile(f)]
 
     # Filter by extension
-    filtered_files = []
-    for filepath in dir_files:
-        ext = os.path.splitext(filepath)[1].lower()
-        if ext in extensions:
-            filtered_files.append(filepath)
+    filtered_files = [f for f in dir_files if has_extension(f, extensions)]
 
     # Apply skip and step
     filtered_files = filtered_files[skip_first_images:]
@@ -151,10 +180,9 @@ def detect_file_type(directory: str) -> FileType:
             if not item.is_file():
                 continue
 
-            ext = os.path.splitext(item.name)[1].lower()
-            if ext in IMG_EXTENSIONS:
+            if has_extension(item.name, IMG_EXTENSIONS):
                 has_standard = True
-            elif ext in EXR_EXTENSIONS:
+            elif has_extension(item.name, EXR_EXTENSIONS):
                 has_exr = True
 
             # Early exit if we know enough
