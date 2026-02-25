@@ -1,16 +1,11 @@
-"""
-Base loader interface for ReadNode
-"""
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any
+from typing import Dict, Any
 import torch
 
 
 @dataclass
 class LoadResult:
-    """Result from loading a single image frame."""
     image: torch.Tensor  # [1, H, W, 3] RGB tensor
     mask: torch.Tensor   # [1, H, W] mask/alpha tensor
     layers: Dict[str, torch.Tensor] = field(default_factory=dict)  # Additional layers (EXR)
@@ -22,9 +17,7 @@ class LoadResult:
 
 
 class BaseLoader(ABC):
-    """Abstract base class for image loaders."""
 
-    # File extensions this loader handles
     EXTENSIONS: set = set()
 
     @abstractmethod
@@ -56,7 +49,6 @@ class BaseLoader(ABC):
 
     @classmethod
     def can_load(cls, file_path: str) -> bool:
-        """Check if this loader can handle the given file."""
         import os
         ext = os.path.splitext(file_path)[1].lower()
         return ext in cls.EXTENSIONS

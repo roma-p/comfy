@@ -3,6 +3,7 @@ File utilities for ReadNode
 """
 
 import os
+import re
 import hashlib
 from enum import Enum
 from typing import List, Optional, Set
@@ -15,11 +16,9 @@ ALL_EXTENSIONS: Set[str] = IMG_EXTENSIONS | EXR_EXTENSIONS
 
 
 class FileType(Enum):
-    """Detected file type for a directory."""
+    """Detected file type."""
     STANDARD = "standard"  # PNG, JPG, etc.
     EXR = "exr"
-    MIXED = "mixed"  # Contains both types
-    EMPTY = "empty"  # No valid files
     UNKNOWN = "unknown"
 
 
@@ -33,6 +32,49 @@ def strip_path(path: Optional[str]) -> Optional[str]:
     if path.endswith('"'):
         path = path[:-1]
     return path
+
+
+def escape_ffmpeg_path(path: str) -> str:
+    """
+    Escape a file path for use in ffmpeg concat file.
+
+    ffmpeg concat format requires:
+    - Single quotes around paths
+    - Single quotes escaped by doubling them
+    - Backslashes escaped
+
+    Args:
+        path: File path to escape
+
+    Returns:
+        Escaped path safe for ffmpeg concat file
+    """
+    # Escape backslashes first, then single quotes
+    escaped = path.replace("\\", "\\\\").replace("'", "'\\''")
+    return escaped
+
+
+def validate_size_string(size_str: str) -> bool:
+    """
+    Validate a size string for ffmpeg scale filter.
+
+    Valid formats:
+    - "512x512" (both dimensions specified)
+    - "512x?" (width specified, height auto)
+    - "?x512" (height specified, width auto)
+
+    Args:
+        size_str: Size string to validate
+
+    Returns:
+        True if valid format
+    """
+    if not size_str or size_str == "Disabled":
+        return True
+
+    # Pattern: digits or ? for each dimension, separated by x
+    pattern = r'^(\d+|\?)[xX](\d+|\?)$'
+    return bool(re.match(pattern, size_str))
 
 
 def calculate_file_hash(filename: str) -> str:
@@ -95,7 +137,7 @@ def detect_file_type(directory: str) -> FileType:
         directory: Path to directory
 
     Returns:
-        FileType enum indicating what types of files are present
+        FileType enum: STANDARD, EXR, or UNKNOWN
     """
     directory = strip_path(directory)
     if not directory or not os.path.isdir(directory):
@@ -115,32 +157,18 @@ def detect_file_type(directory: str) -> FileType:
             elif ext in EXR_EXTENSIONS:
                 has_exr = True
 
-            # Early exit if we've found both types
+            # Early exit if we know enough
             if has_standard and has_exr:
-                return FileType.MIXED
+                break
     except (PermissionError, OSError):
         return FileType.UNKNOWN
 
-    if has_exr and not has_standard:
+    # Prefer EXR if present, otherwise standard
+    if has_exr:
         return FileType.EXR
-    elif has_standard and not has_exr:
+    elif has_standard:
         return FileType.STANDARD
-    elif not has_standard and not has_exr:
-        return FileType.EMPTY
 
-    return FileType.MIXED
+    return FileType.UNKNOWN
 
 
-def get_first_valid_file(directory: str, extensions: Optional[Set[str]] = None) -> Optional[str]:
-    """
-    Get the first valid file from a directory.
-
-    Args:
-        directory: Path to directory
-        extensions: Set of valid extensions (defaults to ALL_EXTENSIONS)
-
-    Returns:
-        Path to first valid file, or None if none found
-    """
-    files = get_sorted_dir_files_from_directory(directory, extensions=extensions)
-    return files[0] if files else None

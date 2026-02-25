@@ -34,30 +34,33 @@ function path_stem(path) {
     return [path.slice(0, index + 1), path.slice(index + 1)];
 }
 
-// EXR output definitions
-const EXR_OUTPUTS = [
+// EXR-only output definitions (layers and cryptomatte)
+// These are added AFTER metadata for EXR files
+const EXR_ONLY_OUTPUTS = [
     { name: "layers", type: "DICT" },
     { name: "cryptomatte", type: "DICT" },
-    { name: "metadata", type: "STRING" },
 ];
+
+// Base outputs: images, masks, frame_count, metadata (always visible)
+// Output order matches Python: IMAGE, MASK, INT, STRING, DICT, DICT
+const BASE_OUTPUT_COUNT = 4;
 
 // Track whether EXR outputs are currently shown
 const nodeExrState = new WeakMap();
 
 // Detect file type and update output visibility
-async function updateOutputVisibility(node, directory) {
-    if (!directory) {
+async function updateOutputVisibility(node, sequencePath) {
+    if (!sequencePath) {
         setExrOutputsVisible(node, false);
         return;
     }
 
     try {
-        let detectURL = api.apiURL("/read_node/detect_type?" + new URLSearchParams({ path: directory }));
+        let detectURL = api.apiURL("/read_node/detect_type?" + new URLSearchParams({ path: sequencePath }));
         let resp = await fetch(detectURL);
         let data = await resp.json();
 
-        const isExr = data.type === "exr" || data.type === "mixed";
-        setExrOutputsVisible(node, isExr);
+        setExrOutputsVisible(node, data.type === "exr");
     } catch (e) {
         console.error("Failed to detect file type:", e);
         setExrOutputsVisible(node, true);
@@ -73,15 +76,15 @@ function setExrOutputsVisible(node, visible) {
     nodeExrState.set(node, visible);
 
     if (visible) {
-        // Add EXR outputs if not present
-        if (node.outputs.length === 3) {
-            for (let output of EXR_OUTPUTS) {
+        // Add EXR-only outputs (layers, cryptomatte) after metadata
+        if (node.outputs.length === BASE_OUTPUT_COUNT) {
+            for (let output of EXR_ONLY_OUTPUTS) {
                 node.addOutput(output.name, output.type);
             }
         }
     } else {
-        // Remove EXR outputs (indices 5, 4, 3 - reverse order to preserve indices)
-        while (node.outputs.length > 3) {
+        // Remove EXR-only outputs from the end (indices 5, 4)
+        while (node.outputs.length > BASE_OUTPUT_COUNT) {
             const idx = node.outputs.length - 1;
             // Disconnect any links first
             if (node.outputs[idx].links && node.outputs[idx].links.length > 0) {
@@ -103,7 +106,7 @@ function searchBox(event, [x, y], node) {
     let pathWidget = this;
     let dialog = document.createElement("div");
     dialog.className = "litegraph litesearchbox graphdialog rounded";
-    dialog.innerHTML = '<span class="name">Path</span> <input autofocus="" type="text" class="value"><button class="rounded">OK</button><div class="helper"></div>';
+    dialog.innerHTML = '<span class="name">Sequence</span> <input autofocus="" type="text" class="value" placeholder="path/to/image.####.exr"><button class="rounded">OK</button><div class="helper"></div>';
     dialog.close = () => {
         dialog.remove();
     };
@@ -201,33 +204,101 @@ function searchBox(event, [x, y], node) {
         options_element.appendChild(el);
     }
 
+    // Check if a filename belongs to a sequence
+    function isSequenceFile(filename, sequences) {
+        for (let seq of sequences) {
+            // Build regex from sequence pattern: test.####.png -> test.\d{4}.png
+            let escapedPrefix = seq.pattern.split(/#+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let escapedSuffix = seq.pattern.split(/#+/).slice(1).join('').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let regex = new RegExp(`^${escapedPrefix}\\d{${seq.padding},}${escapedSuffix}$`);
+            if (regex.test(filename)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     async function updateOptions() {
         timeout = null;
         let [path, remainder] = path_stem(input.value);
+
+        let sequences = [];
+        let filteredOptions = [];
 
         if (last_path != path) {
             let params = { path: path };
             if (extensions) {
                 params.extensions = extensions;
             }
-            let optionsURL = api.apiURL("/read_node/getpath?" + new URLSearchParams(params));
+
+            // Fetch directory contents and sequences in parallel
             try {
-                let resp = await fetch(optionsURL);
-                options = await resp.json();
+                let [dirResp, seqResp] = await Promise.all([
+                    fetch(api.apiURL("/read_node/getpath?" + new URLSearchParams(params))),
+                    path ? fetch(api.apiURL("/read_node/detect_sequences?" + new URLSearchParams({ path: path }))) : Promise.resolve(null)
+                ]);
+
+                options = await dirResp.json();
                 options.sort();
+
+                if (seqResp) {
+                    let seqData = await seqResp.json();
+                    sequences = seqData.sequences || [];
+                }
             } catch (e) {
                 options = [];
+                sequences = [];
             }
+
+            // Filter out files that belong to sequences
+            filteredOptions = options.filter(opt => {
+                // Keep directories
+                if (opt.endsWith("/")) return true;
+                // Filter out sequence member files
+                return !isSequenceFile(opt, sequences);
+            });
+
             last_path = path;
+            // Cache for re-rendering
+            last_sequences = sequences;
+            last_filtered = filteredOptions;
+        } else {
+            sequences = last_sequences || [];
+            filteredOptions = last_filtered || options;
         }
 
         options_element.innerHTML = "";
-        for (let option of options) {
+
+        // Show sequence patterns first (highlighted)
+        for (let seq of sequences) {
+            // Check if pattern matches remainder filter
+            if (seq.pattern.startsWith(remainder)) {
+                let el = document.createElement("div");
+                el.innerText = `${seq.pattern} (${seq.frame_count} frames)`;
+                el.className = "litegraph lite-search-item sequence-pattern";
+                el.style.color = "#8cf";
+                el.addEventListener("click", () => {
+                    pathWidget.value = seq.full_path;
+                    if (pathWidget.callback) {
+                        pathWidget.callback(pathWidget.value);
+                    }
+                    dialog.close();
+                    pathWidget.prompt = false;
+                });
+                options_element.appendChild(el);
+            }
+        }
+
+        // Show remaining files (directories + non-sequence files)
+        for (let option of filteredOptions) {
             if (option.startsWith(remainder)) {
                 addResult(option, option.endsWith("/"));
             }
         }
     }
+
+    let last_sequences = [];
+    let last_filtered = [];
 
     setTimeout(() => {
         input.focus();
@@ -262,16 +333,16 @@ function createPathWidget(node, inputName, inputData) {
                 ctx.rect(margin, y, widget_width - margin * 2, H);
                 ctx.clip();
 
-                ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
-                ctx.fillText(this.label || this.name, margin * 2, y + H * 0.7);
-
+                // Display path or placeholder (left-aligned)
                 ctx.fillStyle = this.value ? LiteGraph.WIDGET_TEXT_COLOR : "#777";
-                ctx.textAlign = "right";
+                ctx.textAlign = "left";
                 let displayPath = this.value || this.options.placeholder || "";
-                if (displayPath.length > 40) {
-                    displayPath = "..." + displayPath.slice(-37);
+                // Truncate from start if too long
+                const maxChars = Math.floor((widget_width - margin * 4) / 7);
+                if (displayPath.length > maxChars) {
+                    displayPath = "..." + displayPath.slice(-(maxChars - 3));
                 }
-                ctx.fillText(displayPath, widget_width - margin * 2, y + H * 0.7);
+                ctx.fillText(displayPath, margin * 2, y + H * 0.7);
                 ctx.restore();
             }
         },
@@ -332,16 +403,7 @@ function addVideoPreview(nodeType) {
             fitHeight(previewNode);
         });
 
-        previewWidget.imgEl = document.createElement("img");
-        previewWidget.imgEl.style["width"] = "100%";
-        previewWidget.imgEl.hidden = true;
-        previewWidget.imgEl.onload = () => {
-            previewWidget.aspectRatio = previewWidget.imgEl.naturalWidth / previewWidget.imgEl.naturalHeight;
-            fitHeight(previewNode);
-        };
-
         previewWidget.parentEl.appendChild(previewWidget.videoEl);
-        previewWidget.parentEl.appendChild(previewWidget.imgEl);
 
         var timeout = null;
 
@@ -382,9 +444,8 @@ function addVideoPreview(nodeType) {
                     target_width = 256;
                 }
                 params.force_size = target_width + "x?";
-                this.videoEl.src = api.apiURL("/read_node/viewvideo?" + new URLSearchParams(params));
+                this.videoEl.src = api.apiURL("/read_node/animated_preview?" + new URLSearchParams(params));
                 this.videoEl.hidden = false;
-                this.imgEl.hidden = true;
             }
         };
 
@@ -404,7 +465,7 @@ function addLoadWidgetCallback(nodeType, widgetName) {
             let params = { filename: value, type: "path", format: "folder" };
             node.updateParameters(params, true);
 
-            // Update output visibility based on file type
+            // Update output visibility based on file type (works with sequence patterns)
             updateOutputVisibility(node, value);
         });
     });
@@ -461,7 +522,7 @@ function initializeOutputVisibility(nodeType) {
     chainCallback(nodeType.prototype, "onNodeCreated", function () {
         const node = this;
 
-        // Remove EXR outputs by default (will be added when EXR directory is selected)
+        // Remove EXR outputs by default (will be added when EXR sequence is selected)
         setTimeout(() => {
             // Mark as showing EXR so setExrOutputsVisible will remove them
             nodeExrState.set(node, true);
@@ -472,7 +533,7 @@ function initializeOutputVisibility(nodeType) {
     // Also check visibility when node is configured (e.g., loading from workflow)
     chainCallback(nodeType.prototype, "onConfigure", function (info) {
         const node = this;
-        const pathWidget = this.widgets?.find((w) => w.name === "directory");
+        const pathWidget = this.widgets?.find((w) => w.name === "sequence_path");
 
         // Delay to ensure node is fully configured
         setTimeout(() => {
@@ -495,7 +556,7 @@ app.registerExtension({
 
         replacePathWidget(nodeType);
         addVideoPreview(nodeType);
-        addLoadWidgetCallback(nodeType, "directory");
+        addLoadWidgetCallback(nodeType, "sequence_path");
         addWidgetCallbacks(nodeType);
         initializeOutputVisibility(nodeType);
     },

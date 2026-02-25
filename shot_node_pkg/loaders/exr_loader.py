@@ -1,7 +1,3 @@
-"""
-OpenImageIO-based EXR loader for multi-layer EXR files
-"""
-
 import os
 import numpy as np
 import torch
@@ -10,7 +6,6 @@ from typing import Dict, Any, List, Optional, Tuple
 from .base import BaseLoader, LoadResult
 from ..utils.file_utils import EXR_EXTENSIONS
 
-# Check for OpenImageIO availability
 try:
     import OpenImageIO as oiio
     OIIO_AVAILABLE = True
@@ -20,7 +15,6 @@ except ImportError:
 
 
 class ExrLoader(BaseLoader):
-    """Loader for EXR files using OpenImageIO."""
 
     EXTENSIONS = EXR_EXTENSIONS
 
@@ -32,26 +26,13 @@ class ExrLoader(BaseLoader):
             )
 
     def load_image(self, file_path: str, normalize: bool = False) -> LoadResult:
-        """
-        Load a single EXR file with all layers.
-
-        Args:
-            file_path: Path to the EXR file
-            normalize: If True, normalize HDR values to 0-1 range
-
-        Returns:
-            LoadResult with image data, layers, and cryptomatte
-        """
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"EXR file not found: {file_path}")
 
-        # Scan metadata first
         metadata = self._scan_metadata(file_path)
 
-        # Load all pixel data
         all_subimage_data = self._load_all_data(file_path)
 
-        # Process into tensors
         layers_dict = {}
         cryptomatte_dict = {}
         rgb_tensor = None
@@ -85,7 +66,7 @@ class ExrLoader(BaseLoader):
                     subimage_name, subimage_data, normalize, layers_dict
                 )
 
-        # Ensure we have valid tensors
+        # Ensure have valid tensors
         if rgb_tensor is None:
             raise ValueError(f"Could not extract RGB data from EXR: {file_path}")
         if alpha_tensor is None:
@@ -104,11 +85,9 @@ class ExrLoader(BaseLoader):
         )
 
     def get_metadata(self, file_path: str) -> Dict[str, Any]:
-        """Get metadata from EXR file without loading pixel data."""
         return self._scan_metadata(file_path)
 
     def _scan_metadata(self, file_path: str) -> Dict[str, Any]:
-        """Scan EXR file for metadata without loading pixels."""
         input_file = oiio.ImageInput.open(file_path)
         if not input_file:
             raise IOError(f"Could not open EXR file: {file_path}")
@@ -142,7 +121,6 @@ class ExrLoader(BaseLoader):
             input_file.close()
 
     def _load_all_data(self, file_path: str) -> Dict[int, np.ndarray]:
-        """Load all pixel data from all subimages."""
         input_file = oiio.ImageInput.open(file_path)
         if not input_file:
             raise IOError(f"Could not open EXR file: {file_path}")
@@ -296,7 +274,6 @@ class ExrLoader(BaseLoader):
         normalize: bool, is_crypto: bool,
         layers_dict: Dict, cryptomatte_dict: Dict
     ):
-        """Process an RGB layer."""
         try:
             r_idx = channel_names.index(f"{group_name}.{r}")
             g_idx = channel_names.index(f"{group_name}.{g}")
@@ -395,7 +372,6 @@ class ExrLoader(BaseLoader):
         self, name: str, data: np.ndarray,
         normalize: bool, layers_dict: Dict
     ):
-        """Process a named subimage as a layer."""
         channels = data.shape[2]
 
         if channels >= 3:

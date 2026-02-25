@@ -1,7 +1,3 @@
-"""
-PIL-based image loader for standard image formats (PNG, JPG, etc.)
-"""
-
 import os
 import numpy as np
 import torch
@@ -13,38 +9,35 @@ from ..utils.file_utils import IMG_EXTENSIONS
 
 
 class ImageLoader(BaseLoader):
-    """Loader for standard image formats using PIL."""
 
     EXTENSIONS = IMG_EXTENSIONS
 
     def load_image(self, file_path: str, normalize: bool = False) -> LoadResult:
-        """
-        Load a single image file using PIL.
-
-        Args:
-            file_path: Path to the image file
-            normalize: If True, normalize values to 0-1 range (no-op for standard images)
-
-        Returns:
-            LoadResult with image data
-        """
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"Image file not found: {file_path}")
 
-        # Open and process image
         img = Image.open(file_path)
         img = ImageOps.exif_transpose(img)
 
         width, height = img.size
+        original_mode = img.mode
         has_alpha = 'A' in img.getbands()
 
-        # Convert to appropriate format
+        # Determine bit depth from mode
+        bit_depth = self._get_bit_depth(original_mode)
+
+        # Get color profile if present
+        color_profile = None
+        if 'icc_profile' in img.info:
+            color_profile = "embedded"  # Has ICC profile
+        elif original_mode in ('RGB', 'RGBA'):
+            color_profile = "sRGB"  # Assumed for standard RGB images
+
         if has_alpha:
             img = img.convert("RGBA")
         else:
             img = img.convert("RGB")
 
-        # Convert to numpy array
         img_array = np.array(img, dtype=np.float32)
         img_array /= 255.0
 
@@ -68,28 +61,47 @@ class ImageLoader(BaseLoader):
             metadata={
                 "file_path": file_path,
                 "format": img.format or "unknown",
-                "mode": img.mode,
+                "mode": original_mode,
+                "bit_depth": bit_depth,
+                "color_profile": color_profile,
             },
             width=width,
             height=height,
             has_alpha=has_alpha,
         )
 
+    def _get_bit_depth(self, mode: str) -> int:
+        """Get bit depth per channel from PIL mode."""
+        bit_depths = {
+            '1': 1,      # 1-bit pixels, black and white
+            'L': 8,      # 8-bit grayscale
+            'P': 8,      # 8-bit palette
+            'RGB': 8,    # 8-bit RGB
+            'RGBA': 8,   # 8-bit RGBA
+            'CMYK': 8,   # 8-bit CMYK
+            'YCbCr': 8,  # 8-bit YCbCr
+            'LAB': 8,    # 8-bit LAB
+            'HSV': 8,    # 8-bit HSV
+            'I': 32,     # 32-bit signed integer
+            'F': 32,     # 32-bit float
+            'I;16': 16,  # 16-bit unsigned integer
+            'I;16L': 16,
+            'I;16B': 16,
+        }
+        return bit_depths.get(mode, 8)
+
     def get_metadata(self, file_path: str) -> Dict[str, Any]:
-        """
-        Get metadata from image file without loading full data.
-
-        Args:
-            file_path: Path to the image file
-
-        Returns:
-            Dictionary with file metadata
-        """
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"Image file not found: {file_path}")
 
         img = Image.open(file_path)
         img = ImageOps.exif_transpose(img)
+
+        color_profile = None
+        if 'icc_profile' in img.info:
+            color_profile = "embedded"
+        elif img.mode in ('RGB', 'RGBA'):
+            color_profile = "sRGB"
 
         return {
             "file_path": file_path,
@@ -97,36 +109,7 @@ class ImageLoader(BaseLoader):
             "height": img.size[1],
             "format": img.format or "unknown",
             "mode": img.mode,
+            "bit_depth": self._get_bit_depth(img.mode),
+            "color_profile": color_profile,
             "has_alpha": 'A' in img.getbands(),
         }
-
-
-def scan_image_sizes(file_paths: list) -> tuple:
-    """
-    Scan multiple images to determine common size and alpha presence.
-
-    Args:
-        file_paths: List of image file paths
-
-    Returns:
-        Tuple of (most_common_width, most_common_height, any_has_alpha)
-    """
-    sizes = {}
-    has_alpha = False
-
-    for image_path in file_paths:
-        try:
-            img = Image.open(image_path)
-            img = ImageOps.exif_transpose(img)
-            has_alpha |= 'A' in img.getbands()
-            size = img.size
-            sizes[size] = sizes.get(size, 0) + 1
-        except Exception:
-            continue
-
-    if not sizes:
-        return (512, 512, False)  # Fallback
-
-    # Find most common size
-    most_common = max(sizes.items(), key=lambda x: x[1])[0]
-    return (most_common[0], most_common[1], has_alpha)
